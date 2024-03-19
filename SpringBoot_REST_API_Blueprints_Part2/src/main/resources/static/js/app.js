@@ -1,5 +1,5 @@
 
-var useApiClient = false;
+var useApiClient = true;
 
 var apimodule; // Variable global para almacenar el módulo seleccionado
 
@@ -13,6 +13,11 @@ if (useApiClient) {
 var app = (function (){
     var author;
     var blueprintName;
+    var canvas = document.getElementById("canvas");
+    var currentCanvasData = {
+        // Otros datos del canvas actual
+        points: [], // Inicialmente, la secuencia de puntos está vacía
+    };
 
     // actualiza el contenido de author del HTML  mostrando un mensaje
     function getName() {
@@ -69,29 +74,172 @@ var app = (function (){
         author = $("#author").val();
         blueprintName = data.id;
         $("#nameblu").text("Current blueprint: " + blueprintName);
-        apimodule.getBlueprintsByNameAndAuthor(author, blueprintName, printPoints);
+        // Obtener los puntos existentes del servidor API
+        apimodule.getBlueprintsByNameAndAuthor(author, blueprintName, function(existingData) {
+            // Combinar los puntos existentes con los puntos en memoria
+            if (existingData && existingData.points) {
+                currentCanvasData.points = existingData.points;
+            } else {
+                currentCanvasData.points = [];
+            }
+
+        // Repintar el dibujo en el canvas con la nueva combinación de puntos
+        repaintCanvas();
+
+        });
     }
 
-    function printPoints(data) {
-        const puntos = data.points;
-        var c = document.getElementById("canvas");
-        var ctx = c.getContext("2d");
-        ctx.clearRect(0, 0, c.width, c.height);
-        ctx.restore();
+
+
+
+
+
+
+
+
+
+
+    canvas.addEventListener("pointerdown", function (event) {
+        if (!blueprintName) {
+            console.log("No se ha seleccionado un canvas. Seleccione uno antes de dibujar.");
+            return;
+        }
+
+        var x = event.clientX - canvas.getBoundingClientRect().left;
+        var y = event.clientY - canvas.getBoundingClientRect().top;
+
+        // Agregar el punto al final de la secuencia de puntos del canvas actual en memoria
+        currentCanvasData.points.push({ x: x, y: y });
+
+        // Repintar el dibujo en el canvas
+        repaintCanvas();
+    });
+
+
+    function repaintCanvas() {
+        if (!blueprintName) {
+            console.log("No se ha seleccionado un canvas. Seleccione uno antes de dibujar.");
+            return;
+        }
+
+        var ctx = canvas.getContext("2d");
+
+        // Limpiar el canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Dibujar los puntos almacenados en la secuencia
         ctx.beginPath();
-        for (let i = 1; i < puntos.length; i++) {
-            ctx.moveTo(puntos[i - 1].x, puntos[i - 1].y);
-            ctx.lineTo(puntos[i].x, puntos[i].y);
-            if (i === puntos.length - 1) {
-                ctx.moveTo(puntos[i].x, puntos[i].y);
-                ctx.lineTo(puntos[0].x, puntos[0].y);
-            }
+        ctx.moveTo(currentCanvasData.points[0].x, currentCanvasData.points[0].y);
+        for (var i = 1; i < currentCanvasData.points.length; i++) {
+            ctx.lineTo(currentCanvasData.points[i].x, currentCanvasData.points[i].y);
         }
         ctx.stroke();
+
+
     }
+
+
+
+    document.getElementById("saveUpdateButton").addEventListener("click", function () {
+        if (author && blueprintName) {
+            // Obtener el lienzo actual y convertirlo en un arreglo de puntos
+            const puntos = currentCanvasData.points;
+            
+            // Crear un objeto Blueprint
+            const blueprint = { author: author, name: blueprintName, points: puntos };
+    
+            // Llamar a la función para actualizar el plano
+            apimodule.updateBlueprint(author, blueprintName, blueprint)
+            .then(function() {
+                // Después de actualizar el plano, realizar la solicitud GET para obtener todos los planos
+                apimodule.getBlueprintsByAuthor(author, function (data) {
+                    // Calcular nuevamente los puntos totales del usuario
+                    authorData(data);
+                });
+            })
+            .catch(function(error) {
+                console.error("Error updating blueprint: " + error);
+            });
+        }
+    });
+
+    document.getElementById("createBlueprintButton").addEventListener("click", function () {
+        // Solicitar el nombre del nuevo 'blueprint' al usuario
+    const blueprintName = prompt("Ingrese Nombre del nuevo BluePrint");
+
+    if (blueprintName !== null && blueprintName.trim() !== "") {
+        // Limpiar el canvas
+        clearCanvas();
+
+        // Realiza una solicitud POST al recurso /blueprints para crear el nuevo plano
+        apimodule.createNewBlueprint(author, blueprintName, function () {
+            // Realiza una solicitud GET al recurso /blueprints para actualizar la interfaz
+            apimodule.getBlueprintsByAuthor(author, authorData);
+        });
+    } else {
+        // Manejar el caso en que el nombre sea nulo o una cadena vacía
+        alert("Entre un Valor valido");
+    }
+    });
+
+    document.getElementById("deleteBlueprintButton").addEventListener("click", function () {
+        if (author && blueprintName) {
+            // Hacer DELETE del blueprint correspondiente
+            apimodule.deleteBlueprint(author, blueprintName)
+            .then(function() {
+                // Limpiar el canvas
+                clearCanvas();
+                blueprintName = null;
+                $("#nameblu").text("");
+    
+                // Hacer GET de los planos disponibles
+                apimodule.getBlueprintsByAuthor(author, function (data) {
+                    // Actualizar la interfaz con los planos disponibles
+                    authorData(data);
+                });
+            })
+            .catch(function(error) {
+                console.error("Error deleting blueprint: " + error);
+            });
+        }
+    });
+    
+
+
+
+
+    function clearCanvas() {
+        var canvas = document.getElementById("canvas");
+        var ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+
 
     return{
         getBlueprintByAuthorAndName:getBlueprintByAuthorAndName,
-        getNameAuthorBlueprints: getNameAuthorBlueprints
+        getNameAuthorBlueprints: getNameAuthorBlueprints,
+        init: function () {
+            console.info('initialized');
+
+            //   Comprueba si el navegador admite el modelo PointerEvent
+            if (window.PointerEvent) {
+                //   Maneja eventos de PointerEvent
+                canvas.addEventListener("pointerdown", function (event) {
+                    var x = event.pageX;
+                    var y = event.pageY;
+                    console.log('PointerEvent: pointerdown at ' + x + ',' + y);
+                });
+            } else {
+                //   Maneja eventos de mousedown (para dispositivos con mouse)
+                canvas.addEventListener("mousedown", function (event) {
+                    var x = event.clientX;
+                    var y = event.clientY;
+                    console.log('MouseDown: mousedown at ' + x + ',' + y);
+                });
+            }
+        },
     }
 })();
+
+app.init();

@@ -13,6 +13,7 @@ import org.apache.tomcat.util.http.parser.HttpParser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -96,6 +97,16 @@ public class BlueprintAPIController {
             return new ResponseEntity<>("Espera",HttpStatus.NOT_FOUND);
         }catch (Exception e) {
             return new ResponseEntity<>("Error interno del servidor", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    @DeleteMapping(path = "/{author}/{bpname}")
+    public ResponseEntity<?> manejadorDeleteRecurso(@PathVariable ("author") String author, @PathVariable ("bpname") String bpname) throws BlueprintNotFoundException{
+        try {
+            bps.deleteBluePrintByAuthorAndName(author, bpname);
+            return new ResponseEntity<>(HttpStatus.ACCEPTED);
+        }catch (BlueprintNotFoundException ex) {
+            //Logger.getLogger(BlueprintAPIController.class.getName()).log(Level.SEVERE, null, ex);
+            return new ResponseEntity<>(ex.getMessage(),HttpStatus.FORBIDDEN);
         }
     }
 }
